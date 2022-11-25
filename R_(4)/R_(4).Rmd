@@ -1,0 +1,397 @@
+---
+title: "HW4"
+author: "Christakakis - aid23004"
+date: "2022-11-17"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+---
+
+```{r load-packages, echo=TRUE}
+library(tidyr)
+library(tidyverse)
+library(readr)
+library(leaflet)
+```
+
+```{r read-csv, echo=TRUE}
+results <- read_csv("results.csv")
+```
+
+```{r checking, echo=TRUE}
+#Check how many unique sports are in the df
+unique(results$Event)
+
+#Cheking for NA values. Fortunately we have none.
+sum(is.na(results))
+colSums(is.na(results))
+
+#Cheking the following: Gender should only have (M) and (F). Medal should only have (G), (S), (B).
+unique(results$Gender)
+unique(results$Medal)
+```
+
+```{r replace, echo=TRUE}
+#After observation we see some faults on results and we replace them
+results$Result <- gsub(',+0.1', '', results$Result)
+results$Result <- gsub(',-0.9', '', results$Result)
+results$Result <- gsub('h', ':', results$Result)
+results$Result <- gsub(' est', '', results$Result)
+```
+
+```{r sports, echo=TRUE}
+#Create a list which includes as many dfs as unique sports and their results.
+sports <- split(results, results$Event)
+
+#For example we can read a df from this list with the following code:
+sports[["10000M Men"]]
+
+#Create a helping df to see how many occurencies we have for every sport.
+df_sports <- count(results, Event)
+```
+
+## [Plot 1]
+
+```{r plot-1, fig.width=10,fig.height=10, echo=TRUE}
+#We will try to plot results between 20Km and 50Km Mens Race Walk.
+#This means that the column which contains the results should have the same format.
+#This must be done for every single sport if we want to plot its results correctly.
+#For what we want to plot now, we have to format the time into %H:%M:%S.
+
+km_men_20 <- sports$`20Km Race Walk Men`
+km_men_50 <- sports$`50Km Race Walk Men`
+
+#We select the columns we need
+km_men_20 <- km_men_20 %>% select(Year, Medal, Name, Result)
+km_men_50 <- km_men_50 %>% select(Year, Medal, Name, Result)
+
+#Make the results column follow a certain format
+km_men_20$Result <- strptime(as.character(km_men_20$Result), "%H:%M:%S")
+km_men_50$Result <- strptime(as.character(km_men_50$Result), "%H:%M:%S")
+
+#Keep only the time format and discard the date
+km_men_20$Result <- format(km_men_20$Result, "%H:%M:%S")
+km_men_50$Result <- format(km_men_50$Result, "%H:%M:%S")
+
+#Filter the Gold Medals
+km_men_20 <- km_men_20 %>% filter(Medal=='G')
+km_men_50 <- km_men_50 %>% filter(Medal=='G')
+
+#Add a new column to be be able to distinguish the type of race walk after we combine the dfs.
+km_men_20 <- add_column(km_men_20, Race = '20Km')
+km_men_50 <- add_column(km_men_50, Race = '50Km')
+
+#Combine the dfs.
+km_men <- rbind(km_men_20, km_men_50)
+
+#Plot
+plot_1 <- ggplot(km_men, aes(x=Year, y=Result, group=Race, color=Race)) +
+              geom_line() +
+              labs( y = "Time Results", x = "Year of Olympic Games") +
+              ggtitle("LinePlot for Men Golden Medalists of 20Km and 50Km Race Walk")
+print(plot_1)
+```
+### Comments for Plot 1: 
+By observing this Line Plot, we can clearly see that over the years times for completing the 20Km and 50Km Race Walk are being reduced. The 20Km Race Walk became an Olympic sport at 1956, and that's why we don't have results for earlier. Finaly, we can see that the time to finish the 50Κm race is proportionally multiple times higher than that of the 20Km, meaning that fatigue reduces the athletes' performance as the kilometers pass.
+
+
+## [Plot 2]
+
+```{r plot-2, fig.width=10,fig.height=10, echo=TRUE}
+#BoxPlot of countries with over 4 medals at Athletics throughout the years
+
+plot_1 <- count(results, Year, Nationality, Medal)
+plot_1 <- group_by(plot_1, Nationality) %>% summarize(count = sum(n))
+plot_1 <- filter(plot_1, count > 4)
+
+#Plot
+plot_2 <- ggplot(plot_1, aes(count, reorder(Nationality,count))) +
+              geom_bar(sta = "identity", fill = "#1cbaeb") +
+              labs(x = "Total Medals", y = "Nationality") +
+              ggtitle("BoxPlot For Athletics Throughout The Years",
+                     subtitle = "Countries With Over 4 Medals") +
+              geom_text(aes(label = count), color = "black", 
+                       position = position_dodge(width = 1), hjust = -0.01) +
+              theme(plot.title = element_text(face = "bold")) +
+              theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+              theme(plot.caption = element_text(color = "grey68"))
+plot_2
+```
+
+### Comments for Plot 2: 
+Noticing this Box Plot we are able to see that USA has won the most medals in Olympic Athletic Sports. In the third place we have URS, which refers to the Soviet Union that after 1991 collapsed.
+
+
+## [Plot 3]
+
+```{r plot-3, fig.width=10,fig.height=7, echo=TRUE}
+#BoxPlot of Germany's total medals throughput the years
+
+plot_2 <- count(results, Nationality, Year, Medal)
+plot_2 <- group_by(plot_2, Nationality, Year) %>% summarize(count = sum(n))
+plot_2 <- filter(plot_2, Nationality == "GER")
+
+#Plot
+plot_3 <- ggplot(plot_2, aes(x=Year, y=count)) +
+            geom_bar(sta = "identity", fill = "#ebbc31") + 
+            labs(x = "Year of Olympic Games", y = "Total Medals") +
+            ggtitle("BoxPlot of Germany's Total Athletic Medals Throughout The Years", 
+                      subtitle = "For observing their banned participations after starting WW1 & WW2") +
+            geom_text(aes(label = count), color = "black", 
+                      position = position_dodge(width = 1), vjust = -0.01) +
+            theme(plot.title = element_text(face = "bold")) +
+            theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+            theme(plot.caption = element_text(color = "grey68"))+
+            scale_x_continuous(breaks=seq(1896,2016,10))
+plot_3
+```
+
+### Comments for Plot 3: 
+According to history Germany was banned from the Olympic Games in 1920, 1924 after WW1 and 1948 after WW2. We can clearly see that they didn't won a medal in those years. Also the biggest amount of medals they won in athletics was in 1936, at the Olympic Games in Berlin, a totaling of 12 medals. It was a perfect opportunity for the Nazis to showcase Hitler's Third Reich and they simply intervened to the results.
+
+
+## [Plot 4]
+
+```{r plot-4, fig.width=10,fig.height=9, echo=TRUE}
+#BoxPlot of USA's Sex Ratio Athletes Throughout The Years
+
+plot_3 <- count(results, Year, Nationality, Gender)
+plot_3 <- group_by(plot_3, Gender, Nationality, Year) %>% summarize(count = sum(n))
+plot_3 <- filter(plot_3, Nationality == "USA")
+
+#Plot
+plot_4 <- ggplot(data=plot_3, aes(x=Year, y=count, colour=Gender)) +
+              geom_bar(stat='identity') +
+              theme_minimal() + 
+              scale_color_brewer(palette="Set2") +
+              labs(x = "Year of Olympic Games", y = "Male / Women Participants") +
+              ggtitle("BoxPlot of USA's Sex Ratio Athletes Throughout The Years", 
+                        subtitle = "For observing when Women started 
+                                      participating at Olympic Games") +
+              geom_text(aes(label = count), color = "white", 
+                        position = position_dodge(width = 1), vjust = 1.1) +
+              scale_x_continuous(breaks=seq(1896,2016,15))
+plot_4
+```
+
+### Comments for Plot 4: 
+Women athletics made their debut in 1928, and that's clear by observing Plot 4. Οn the contrary to the older Olympic games, we see that in recent years the female Olympians are proportionally almost equal to the male ones.
+
+
+## [Plot 5]
+
+```{r plot-5, fig.width=8,fig.height=8, echo=TRUE}
+#ScatterPlot of Golden Men/Women Long Jumps Throughout The Years
+
+long_jump_men <- sports$`Long Jump Men`
+long_jump_women <- sports$`Long Jump Women`
+
+long_jump_men <- filter(long_jump_men, Medal == "G")
+long_jump_women <- filter(long_jump_women, Medal == "G")
+
+long_jump_men <- long_jump_men %>% select(Gender, Year, Result)
+long_jump_women <- long_jump_women %>% select(Gender, Year, Result)
+
+long_jump <- rbind(long_jump_men, long_jump_women)
+
+#Plot
+plot_5 <- ggplot(long_jump, aes(x=Year, y=as.numeric(Result), color = Gender)) +
+              geom_point()+
+              scale_colour_manual(values=c("blue", "red")) +
+              scale_y_continuous(breaks=seq(6,9,0.25))+
+              ggtitle("ScatterPlot of Men/Women Long Jump Throughout The Years", 
+                      subtitle = "For observing the jump difference in meters ")+
+              theme(legend.position = c(0.91, 0.08))+
+              labs(x = "Year of Olympic Games", y = "Jump (in meters)") +
+              geom_text(aes(label = ifelse((Result) %in% 
+                          c("8.67", "7.17"),
+                          paste("Highsest: ", as.character(Result), "→", sep = " "),'')),
+                          hjust = 1.12, vjust = 0.3, col = "grey35") +
+              geom_text(aes(label = ifelse((Result) %in% 
+                          c("6.35", "6.24"),
+                          paste("←", as.character(Result), ":Lowest", sep = " "),'')),
+                          hjust = -0.12, vjust = 0.35, col = "grey35")
+plot_5
+```
+
+### Comments for Plot 5: 
+Comparing the difference in meters for Men and Women Long Jump, one can tell that the variance is over 1 meter for Women and Men Gold Medalists.
+
+
+## [Plot 6]
+
+```{r plot-6, fig.width=8,fig.height=9, echo=TRUE}
+#ScatterPlot of 100M Men Golden Medalists Throughout The Years
+
+mens_100 <- sports$`100M Men`
+mens_100 <- filter(mens_100, Medal == 'G')
+
+#Plot
+plot_6 <- ggplot(mens_100, aes(x=Year, y=as.numeric(Result))) +
+              geom_point(color="#f0674f", alpha=0.7, size=3) +
+              geom_text(aes(label = ifelse((Name) %in% 
+                        c("Usain BOLT"),
+                        paste(as.character(Name), "→", sep = " "),'')),
+                        hjust = 1.12, vjust = 0.3, col = "grey35") +
+              geom_text(aes(label = ifelse((Name) %in% 
+                        c("Thomas BURKE", "Percy WILLIAMS", "Allan WELLS"), 
+                        paste("←", as.character(Name), sep = " "),'')),
+                        hjust = -0.12, vjust = 0.35, col = "grey35") +
+              scale_y_continuous(breaks=seq(9,12,0.2)) +
+              labs(x = "Year of Olympic Games", y = "Seconds") +
+              ggtitle("ScatterPlot of 100M Men Golden Medalists Throughout The Years", 
+                      subtitle = "For observing how the time was reduced")
+plot_6
+```
+
+### Comments for Plot 6: 
+As with Plot 1, times for the Golden Medals in Men 100M have been drastically reduced. Of course Usain Bolt swept all the gold medals between 2008 and 2016 renewing his world records.
+
+
+## [Plot 7]
+
+```{r plot-7, fig.width=9,fig.height=6, echo=TRUE}
+#Map of total athletic medals for each city holding olympic games
+
+#See how many unique locations we have
+unique(results$Location)
+
+#Select only the location of the Olympics and Medals column
+location_map_medals <- results %>% select(Location, Medal)
+
+#Count how many medals where given at each location
+location_map_medals <- location_map_medals %>%
+    group_by(Location) %>% summarize(count = n())
+
+#Add two new columns representing longitude and latitude of each location
+location_map_medals <- location_map_medals %>%
+    add_column(lat = 0)
+location_map_medals <- location_map_medals %>%
+    add_column(long = 0)
+
+#Arrange the df
+location_map_medals <- location_map_medals %>%
+	arrange(Location)
+
+#Insert world map data
+world <- map_data("world")
+
+#Insert longitude and latitude for each location
+#Amsterdam
+location_map_medals$lat[1] <- 52.370216
+location_map_medals$long[1] <- 4.895168
+
+#Antwerp
+location_map_medals$lat[2] <- 51.219448
+location_map_medals$long[2] <- 4.402464
+
+#Athens
+location_map_medals$lat[3] <- 37.983810
+location_map_medals$long[3] <- 23.727539
+
+#Atlanta
+location_map_medals$lat[4] <- 33.748997
+location_map_medals$long[4] <- -84.387985
+
+#Barcelona
+location_map_medals$lat[5] <- 41.385063
+location_map_medals$long[5] <- 2.173404
+
+#Beijing
+location_map_medals$lat[6] <- 39.904202
+location_map_medals$long[6] <- 116.407394
+
+#Berlin
+location_map_medals$lat[7] <- 52.520008
+location_map_medals$long[7] <- 13.404954
+
+#Helsinki
+location_map_medals$lat[8] <- 60.169857
+location_map_medals$long[8] <- 24.938379
+
+#London
+location_map_medals$lat[9] <- 51.507351
+location_map_medals$long[9] <- -0.127758
+
+#Los Angeles
+location_map_medals$lat[10] <- 34.052235
+location_map_medals$long[10] <- -118.243683
+
+#Melbroune
+location_map_medals$lat[11] <- -37.813629
+location_map_medals$long[11] <- 144.963058
+
+#Mexico
+location_map_medals$lat[12] <- 19.432608
+location_map_medals$long[12] <- -99.133209
+
+#Montreal
+location_map_medals$lat[13] <- 45.501690
+location_map_medals$long[13] <- -73.567253
+
+#Moscow
+location_map_medals$lat[14] <- 55.755825
+location_map_medals$long[14] <- 37.617298
+
+#Munich
+location_map_medals$lat[15] <- 48.135124
+location_map_medals$long[15] <- 11.581981
+
+#Paris
+location_map_medals$lat[16] <- 48.856613
+location_map_medals$long[16] <- 2.352222
+
+#Rio
+location_map_medals$lat[17] <- -22.906847
+location_map_medals$long[17] <- -43.172897
+
+#Rome
+location_map_medals$lat[18] <- 41.902782
+location_map_medals$long[18] <- 12.496365
+
+#Seoul
+location_map_medals$lat[19] <- 37.566536
+location_map_medals$long[19] <- 126.977966
+
+#St Louis
+location_map_medals$lat[20] <- 38.627003
+location_map_medals$long[20] <- -90.199402
+
+#Stockholm
+location_map_medals$lat[21] <- 59.329323
+location_map_medals$long[21] <- 18.068581
+
+#Sydney
+location_map_medals$lat[22] <- -33.868820
+location_map_medals$long[22] <- 151.209290
+
+#Tokyo
+location_map_medals$lat[23] <- 35.689487
+location_map_medals$long[23] <- 139.691711
+
+
+#Create a function with the desired color palette
+pal <- colorFactor(
+    palette = 'Dark2',
+    domain = location_map_medals$Location
+    )
+
+#Plot
+plot_7 <- leaflet(location_map_medals) %>% addTiles() %>%
+              addCircles(lng = ~long, lat = ~lat, weight = ~count/10,
+                        color = ~pal(Location),
+                        label = paste("Location:", location_map_medals$Location, "|",
+                                      "Total Medals:", location_map_medals$count), 
+              ) %>%
+              addControl("Map Of Total Medals For Each City", position = "topleft")%>%
+              clearBounds()
+plot_7
+```
+
+### Comments for Plot 7: 
+This map gives us a clear view that the most medals won in athletics in Olympic Games are in London, a totaling of 253 medals. Second comes Los Angeles with 181, while Athens is in third place with 173 Olympic Medals in athletic sports.
+
+
+## Comments for the dataset:
+### This particular dataset showed us that data pre-processing and clearing is a very time consuming progress. Although it's inevitable if we want to compare and show its real potential and contents. We went through some univariate, multivariate analysis as well as some time series analysis in order to plot some interesting results. What we learned is that in a large dataset you can't really clear and format the values you want from the beggining (unless they're NAs), but it can be done as long as you think about the visualizations-plots you want to produce and break your data appropriately bringing them into tidy formats.

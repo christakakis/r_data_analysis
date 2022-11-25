@@ -1,0 +1,163 @@
+---
+title: "HW3"
+author: "Christakakis - aid23004"
+date: "2022-10-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, include=FALSE}
+library(dplyr)
+library(tidyverse)
+library(deducorrect)
+library(editrules)
+library(VIM)
+library(diffdf)
+```
+
+## [Exercise 3.1]
+
+**(A)**
+
+```{r 3.1 A}
+downloaded <- "https://raw.githubusercontent.com/edwindj/datacleaning/master/data/dirty_iris.csv"
+if (!file.exists('dirty_iris.csv'))download.file(downloaded,'dirty_iris.csv')
+df <- read_csv('dirty_iris.csv')
+is.factor(df)
+```
+
+**(B)**
+
+```{r 3.1 B}
+row_na = apply(X = is.na(df), MARGIN = 1, FUN = sum)
+df_na_sum <- sum(row_na != 0)
+df_na_sum
+percentage = (nrow(df) - df_na_sum) / nrow(df)
+sprintf("%0.1f%%", percentage * 100)
+```
+
+**(C)**
+
+```{r 3.1 C}
+special_value <- function(x){
+	if (is.numeric(x)) !is.finite(x) else is.na(x)
+	}
+df[sapply(df, special_value) == TRUE] <- NA
+df
+```
+
+## [Exercise 3.2]
+
+**(A)**
+
+```{r 3.2 A}
+rules <- editfile("rules.txt")
+rules
+```
+
+**(B)**
+
+```{r 3.2 B}
+violations <- violatedEdits(rules, df)
+summary(violations)
+plot(violations)
+```
+
+**(C)**
+
+```{r 3.2 C}
+record_errors <- summary(violations)
+no_errors <- record_errors %>%
+	filter(errors == 0)
+no_errors$rel
+```
+
+**(D)**
+
+```{r 3.2 D}
+violations_df <- as.data.frame.table(violations)
+colnames(violations_df) <- c('record','num','logical')
+long_petals <- violations_df %>%
+	filter(num == 'num7', logical == TRUE)%>%
+	summarise(record)
+long_petals
+```
+
+**(E)**
+
+```{r 3.2 E}
+boxplot(df$Sepal.Length, ylab = 'Sepal Length', varwidth = TRUE, main = 'Sepal_Length Outliers')
+boxplot.stats(df$Sepal.Length)$out
+```
+
+By looking at the outlies 49.0 & 73.0 we can observe that also the other feature columns have big values. By moving the floating point one digit left, we would have normal values for the dataset. For the outlier 0.0 we may have incorrect sampling.
+
+```{r}
+df$Sepal.Length[(df$Sepal.Length == 0) | (df$Sepal.Length == 49) | (df$Sepal.Length == 73)] <-mean(df$Petal.Length, na.rm = TRUE)
+boxplot.stats(df$Sepal.Length)$out
+boxplot(df$Sepal.Length, ylab = 'Sepal Length', varwidth = TRUE, main = 'Sepal_Length Without Outliers')
+```
+
+## [Exercise 3.3]
+
+**(A)**
+
+```{r 3.3 A}
+replace_non_positive_rules <- correctionRules(expression(if (is.na(Petal.Width)) Petal.Width<- NA 
+									   else if(Petal.Width < 0) Petal.Width <-NA))
+df_replaced_na <- correctWithRules(replace_non_positive_rules, df)
+df <- df_replaced_na$corrected
+df
+```
+
+**(B)**
+
+```{r 3.3 B}
+le <- localizeErrors(rules, df)$adapt
+df[le == TRUE] <- NA
+df
+```
+
+## [Exercise 3.4]
+
+**(A)**
+
+```{r 3.4 A}
+df_KNN_imputed <- kNN(df) %>%
+	select(1:5)
+df_KNN_imputed
+```
+
+**(B)**
+
+Column subtraction is the absolute value of subtracting Hotdeck - kNN Imputation
+
+```{r 3.4 B}
+df_hotdeck_Petal_Width <- hotdeck(data = df, variable = 'Petal.Width', ord_var = 'Species') %>%
+	select(1:5)
+comparison_hotdeck_PW_kNN <-diffdf(df_hotdeck_Petal_Width, df_KNN_imputed)$VarDiff_Petal.Width
+colnames(comparison_hotdeck_PW_kNN) <- c('Variable','RowNumber','HotDeck_PetalWidth', 'kNN')
+comparison_hotdeck_PW_kNN <- comparison_hotdeck_PW_kNN %>%
+	mutate(subtraction = abs(HotDeck_PetalWidth - kNN))
+comparison_hotdeck_PW_kNN
+```
+
+
+**(C)**
+
+Column subtraction is the absolute value of subtracting Hotdeck - kNN Imputation
+
+```{r 3.4 C}
+ df_hotdeck_Petal_Width_2 <- hotdeck(data = df, variable = 'Petal.Width', ord_var = c('Species', 'Sepal.Length'))  %>%
+	                            select(1:5)
+comparison_hotdeck_PW_kNN_2 <-diffdf(df_hotdeck_Petal_Width_2, df_KNN_imputed)$VarDiff_Petal.Width
+colnames(comparison_hotdeck_PW_kNN_2) <- c('Variable','RowNumber','HotDeck_PetalWidth_2', 'kNN')
+comparison_hotdeck_PW_kNN_2 <- comparison_hotdeck_PW_kNN_2 %>%
+	mutate(subtraction = abs(HotDeck_PetalWidth_2 - kNN))
+comparison_hotdeck_PW_kNN_2
+```
+
+**By comparing the Hotdeck Imputation with kNN Imputation, we can see that the ordering of the data can bring a difference in the final results**

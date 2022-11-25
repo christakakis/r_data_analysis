@@ -1,0 +1,94 @@
+---
+title: "HW2"
+author: "Christakakis - aid23004"
+date: "2022-11-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+## [Exercise 1]
+
+```{r data load(1)}
+df <- read_csv("queen.csv")
+```
+
+**(Α)**
+```{r Α}
+tracks_per_album <- count(df, album_name)
+colnames(tracks_per_album) <- c('Album','Tracks')
+ggplot(tracks_per_album, aes(x = Album, y = Tracks)) + 
+    geom_bar(stat = "identity", width = 0.5) +
+    ggtitle("BarPlot - Tracks per Album") + 
+    coord_flip()
+```
+
+**(Β)**
+```{r Β}
+ggplot(df, aes(x = tempo)) +
+    geom_histogram(aes(fill = interaction(mode)),bins = 15) +
+    ggtitle("Tempo Distribution Of All Tracks")+
+    labs(y = "Frequency", x = "Tempo (bpm)") +
+    guides(fill=guide_legend(title="Mode"))
+```
+
+**(Γ)**
+```{r Γ}
+ggplot(df, aes(reorder(album_name, tempo, median), tempo)) +
+    geom_boxplot() +
+    ggtitle("Tempo BoxPlots per Album")+
+    labs(y = "Tempo (bpm)", x = "Albums") +
+    coord_flip() 
+```
+
+**(Δ)**
+```{r Δ, fig.width=20,fig.height=10}
+ggplot(df, aes(x=energy, y=danceability)) +
+    geom_point(aes(size=tempo)) +
+    labs( y = "Energy", x = "Danceability") + 
+    facet_grid( ~ album_name ) + 
+    ggtitle("Faceted ScatterPlot for Danceability, Energy, Tempo Of An Album")
+```
+
+**(Ε.1)**
+```{r Ε(1)}
+ggplot(df, aes(x=loudness, y=energy)) +
+    geom_point(alpha=0.5) +
+    labs( y = "Energy", x = "Loudness (dB)") + 
+    ggtitle("Energy Vs. Loudness") + 
+    geom_smooth()
+```
+
+**(Ε.2)**
+```{r Ε(2)}
+ggplot(df, aes(album_popularity, reorder(album_name,album_popularity), color = mode)) +
+	geom_point() +
+	labs(x = "Album Popularity") +
+	ggtitle("Album Popularity", sub = "and it's mode") + ylab("")
+```
+
+
+## [Exercise 2]
+
+```{r data load(2)}
+df_mac <- read_csv("mcdonalds.csv")
+df_mac <- select(df_mac, 2:8)
+df_mac <- df_mac %>% drop_na()
+df_mac <- df_mac %>% mutate(dollar_price = local_price / dollar_ex)
+```
+
+```{r Ex.2, fig.width=10,fig.height=13}
+ggplot(df_mac, aes(reorder(name, GDP_dollar, median), GDP_dollar)) +
+    geom_point(aes(size = dollar_price, alpha = dollar_price), alpha = 0.10) + 
+    labs(y = "GDP (in $)", x = "Countries") +
+    ggtitle("ScatterPlot of Every Country's Big Mac price (in $) and it's GDP") +
+    coord_flip()
+```
