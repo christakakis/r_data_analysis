@@ -1,5 +1,5 @@
 # R Data Analysis Repository
-**Analysis and Visualization with R for various datasets**
+**Analysis and Visualization with R for various datasets.**
 
 ### The main goal of the repo is to understand in depth the most famous libraries in R language such as **dplyr**, **tidyverse**, **tidyr**, **ggplot2**, **leaflet** in order to use them for tidy data transformation and plotting.
 
