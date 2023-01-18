@@ -1,6 +1,6 @@
 ---
-title: "HW1"
-author: "Christakakis - aid23004"
+title: "R_(1)."
+author: "Christakakis Panagiotis"
 date: "2022-10-19"
 output: 
   html_document: default
