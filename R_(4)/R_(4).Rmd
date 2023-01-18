@@ -1,6 +1,6 @@
 ---
-title: "HW4"
-author: "Christakakis - aid23004"
+title: "R_(4)"
+author: "Christakakis Panagiotis"
 date: "2022-11-17"
 output:
   html_document:
