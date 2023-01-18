@@ -1,0 +1,244 @@
+---
+title: "Dashboard 5a"
+author: "Christakakis Panagiotis"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+```{r global, include=FALSE}
+library(tidyverse)
+library(tidygraph)
+library(cshapes)
+library(leaflet)
+library(sf)
+library(units)
+library(lwgeom)
+library(rgeos)
+library(rgdal)
+library(ggplot2)
+library(prioritizr)
+library(tmap)
+library(ggraph)
+library(ggdag)
+library(igraph)
+library(stringr)
+```
+
+Map 1
+===================================== 
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+Distance of countries with Greece in km
+
+```{r input-1}
+sliderInput("dist", label = "Distance(km):",
+              min = 500, max = 4500, value = 2000, step = 500)
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Ploting countries far from Greece based on a certain threshold (in km).
+
+```{r page 1a, include=FALSE}
+# Save countries borders as of date 2019-12-31
+cmap.2019 <- cshp(date=as.Date("2019-12-31"))
+
+# Check if geometries are valid. If not fix them
+st_is_valid(cmap.2019[0], reason=TRUE)
+validcmap.2019 <- st_make_valid(cmap.2019)
+sf_use_s2(FALSE)
+```
+
+
+```{r plot-1}
+renderLeaflet({
+  # Obtain Greece information
+  greece_df <- filter(validcmap.2019, country_name=='Greece')
+  
+  # Get the distances from Greece for all countries and attach them to the df
+  distance_from_greece <- st_distance(validcmap.2019, greece_df)
+  final_data <- cbind(validcmap.2019, distance_from_greece)
+  
+  # Drop the [m] units that label the numbers and transform them into km.
+  final_data$distance_from_greece <- drop_units(final_data$distance_from_greece)
+  final_data$distance_from_greece <- final_data$distance_from_greece / 1000
+  
+  # Only keep km lower than 2000
+  final_data <- final_data %>%
+    filter(final_data$distance_from_greece<=as.numeric(input$dist))
+  
+  leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(data = final_data, color = "red", weight = 1,
+              fillOpacity = 0.3, fillColor = "blue")
+})
+```
+
+Map 2
+===================================== 
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r input-2}
+selectInput("year", label = "Year of interest:", 
+            choices= c('1914-1-1','1918-12-1','1939-1-1','1945-12-1',
+                       '1960-12-31','1980-12-31','1990-1-1','2000-1-1',
+                       '2010-1-1','2019-1-1'), selected = '2019-1-1')
+```
+Column
+------------------------------------------------------------------------
+### Map of countries and their capitals.
+
+```{r page-2}
+renderLeaflet({
+  date = toString(input$year)
+  
+  cmap.2019 <- cshp(date=as.Date(date), useGW = TRUE)
+  cmap.2019 <- st_make_valid(cmap.2019)
+  cmap.2019_wgs84 = st_transform(cmap.2019, "EPSG:4326")
+  
+  leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(data = cmap.2019_wgs84, color = "red", weight = 1,
+              fillOpacity = 0.3, fillColor = "blue") %>%
+  addMarkers(data = cmap.2019_wgs84, 
+             lng = cmap.2019_wgs84$caplong, 
+             lat = cmap.2019_wgs84$caplat, 
+             label = cmap.2019_wgs84$capname)
+})
+```
+Map 3
+===================================== 
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r input-3}
+sliderInput("buf", label = "Buffer Length (km)::",
+              min = 100, max = 1000, value = 100, step = 100)
+```
+Column
+------------------------------------------------------------------------
+### Countries that a buffer of their capital fall within territory of neighboring counties. 
+
+```{r page-3} 
+renderLeaflet({
+  sf_use_s2(TRUE)
+  
+  capital_coords <- data.frame(lon = cmap.2019_wgs84$caplong,
+                               lat = cmap.2019_wgs84$caplat)
+  coordinates(capital_coords) <- c("lon", "lat")
+  proj4string(capital_coords) <- CRS("+init=epsg:4326")
+  capital_coords_sf <- st_as_sf(capital_coords)
+  names(capital_coords_sf)[1] <- "capital_coord"
+  cmap.2019_wgs84 <- cbind(cmap.2019_wgs84, capital_coords_sf)
+  
+  # Create a buffer of 100 km around each capital and add it to the
+  # main world df.
+  buffer <- as.numeric(input$buf) * 1000
+  buffer_100km <- st_buffer(cmap.2019_wgs84$capital_coord, dist = buffer)
+  cmap.2019_wgs84['capital_buffer'] <- buffer_100km
+  
+  # Calculate the intersections that arise with the buffer and convert
+  # numerical into logical values.
+  intersections <- st_intersects(buffer_100km, validcmap.2019, remove_self = TRUE)
+  true_false_intersections = lengths(intersections) > 0
+  intersecting_countries <- validcmap.2019[true_false_intersections, ]
+  
+  # Use leaflet to create an interactive map with countries in buffer
+  leaflet() %>% 
+    addTiles() %>% 
+    addPolygons(data = intersecting_countries, color = "red", weight = 1,
+                fillOpacity = 0.3, fillColor = "blue") %>%
+    addMarkers(data = intersecting_countries, 
+               lng = intersecting_countries$caplong, 
+               lat = intersecting_countries$caplat, 
+               label = intersecting_countries$capname)
+})
+```
+Map 4
+=====================================
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Map of countries with < 100 km distance from capital to centroid.
+
+```{r page-4a}
+renderPlot({
+  cmap.2019_wgs84 <- st_make_valid(cmap.2019_wgs84)
+  
+  # Calculate centroid for each country
+  country_centroid <- st_centroid(cmap.2019_wgs84$geometry)
+  
+  # Calculate distance from centroid to capital for every country
+  distance_km <- st_distance(cmap.2019_wgs84$capital_coord, country_centroid, by_element = TRUE)
+  
+  # Put distances into the world df, drop meters and divibe by
+  # 1000 in order to have km as units.
+  cmap.2019_wgs84 <- cbind(cmap.2019_wgs84, distance_km)
+  cmap.2019_wgs84$distance_km <- drop_units(cmap.2019_wgs84$distance_km)
+  cmap.2019_wgs84$distance_km <- cmap.2019_wgs84$distance_km / 1000
+  
+  # Filter the df accordingly to get what we want
+  filtered_100 <- filter(cmap.2019_wgs84, cmap.2019_wgs84$distance_km < 100)
+  
+  plot(filtered_100[12])
+})
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Map of countries with 100 - 300 km distance from capital to centroid.
+
+```{r page-4b}
+renderPlot({
+  cmap.2019_wgs84 <- st_make_valid(cmap.2019_wgs84)
+  
+  # Calculate centroid for each country
+  country_centroid <- st_centroid(cmap.2019_wgs84$geometry)
+  
+  # Calculate distance from centroid to capital for every country
+  distance_km <- st_distance(cmap.2019_wgs84$capital_coord, country_centroid, by_element = TRUE)
+  
+  # Put distances into the world df, drop meters and divibe by
+  # 1000 in order to have km as units.
+  cmap.2019_wgs84 <- cbind(cmap.2019_wgs84, distance_km)
+  cmap.2019_wgs84$distance_km <- drop_units(cmap.2019_wgs84$distance_km)
+  cmap.2019_wgs84$distance_km <- cmap.2019_wgs84$distance_km / 1000
+  
+  # Filter the df accordingly to get what we want
+  filtered_100_300 <- filter(cmap.2019_wgs84, cmap.2019_wgs84$distance_km >= 100,
+                           cmap.2019_wgs84$distance_km <= 300)
+  
+  plot(filtered_100_300[12])
+})
+```
+
+### Map of countries with > 300 km distance from capital to centroid.
+
+```{r page-4c}
+renderPlot({
+  cmap.2019_wgs84 <- st_make_valid(cmap.2019_wgs84)
+  
+  # Calculate centroid for each country
+  country_centroid <- st_centroid(cmap.2019_wgs84$geometry)
+  
+  # Calculate distance from centroid to capital for every country
+  distance_km <- st_distance(cmap.2019_wgs84$capital_coord, country_centroid, by_element = TRUE)
+  
+  # Put distances into the world df, drop meters and divibe by
+  # 1000 in order to have km as units.
+  cmap.2019_wgs84 <- cbind(cmap.2019_wgs84, distance_km)
+  cmap.2019_wgs84$distance_km <- drop_units(cmap.2019_wgs84$distance_km)
+  cmap.2019_wgs84$distance_km <- cmap.2019_wgs84$distance_km / 1000
+  
+  # Filter the df accordingly to get what we want
+  filtered_300 <- filter(cmap.2019_wgs84, cmap.2019_wgs84$distance_km > 300)
+  
+  plot(filtered_300[12])
+})
+```
