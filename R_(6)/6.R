@@ -1,0 +1,177 @@
+# Import libraries
+library(tidyverse)
+library(tidygraph)
+library(cshapes)
+library(leaflet)
+library(sf)
+library(units)
+library(lwgeom)
+library(rgeos)
+library(rgdal)
+library(ggplot2)
+library(prioritizr)
+library(tmap)
+library(ggraph)
+library(ggdag)
+library(igraph)
+library(stringr)
+
+#(1-2)
+# We need the code for distance matrix calculation & transformation from A5
+# Also we need previous code to re-run basic things such as map download.
+cmap.2019 <- cshp(date=as.Date("2019-1-1"))
+validcmap.2019 <- st_make_valid(cmap.2019)
+cmap.2019_wgs84 <- st_transform(cmap.2019, "EPSG:4326")
+cmap.2019_wgs84 <- st_make_valid(cmap.2019_wgs84)
+
+distance_matrix <- distmatrix(as.Date("2019-1-1"), "capdist")
+
+# Rows and columns are named after capitals.
+rownames(distance_matrix) <- cmap.2019_wgs84$capname
+colnames(distance_matrix) <- cmap.2019_wgs84$capname
+
+# Convert distance matrix into df.
+distance_matrix <- as.data.frame(distance_matrix)
+
+# Add a new column with the names of capitals.
+distance_matrix["capitals"] <- cmap.2019$capname
+
+# Calculate proximity matrix from a map and convert it into df.
+prox_matrix <- proximity_matrix(validcmap.2019,0)
+prox_matrix <- as.matrix(prox_matrix)
+prox_matrix <- as.data.frame(prox_matrix)
+
+# Rows and columns are named after capitals.
+rownames(prox_matrix) <- cmap.2019_wgs84$capname
+colnames(prox_matrix) <- cmap.2019_wgs84$capname
+
+# Add a new column with the names of capitals in order to gather them.
+prox_matrix["capitals"] <- cmap.2019$capname
+all_possible_connections <- gather(prox_matrix, key = "cap_name", value = "connection", 1:174)
+
+# Make changes in order to fit together the two dataframes and lastly obtain the three
+# columns we truly want (From - To - Distance).
+dist_prox_together <- gather(distance_matrix, key = "cap_name", value = "dist", 1:174)
+dist_prox_together['distances'] <- all_possible_connections$connection
+true_connections <- dist_prox_together %>% filter(dist_prox_together$distances == 1) %>% arrange(desc(dist))
+true_connections_no_duplicates <- distinct(true_connections, dist, .keep_all = TRUE)
+final_connections <- true_connections_no_duplicates[,1:3]
+
+
+graph_routes <- tidygraph::as_tbl_graph(final_connections)
+nodes <- cmap.2019$capnames
+
+graph_routes <- graph_routes %>%
+  tidygraph::activate(nodes) %>%
+  mutate(title = str_to_title(name),
+         label = str_replace_all(title, " ", "\n")
+  )
+
+# Plot the graph
+graph_routes %>%
+  ggraph(layout = "kk") +
+  geom_edge_link(aes(width = dist)) +
+  scale_edge_width(range=c(0.2, 5)) +
+  geom_node_text(aes(label = label, color = name), size = 3.5, repel = TRUE, show.legend = FALSE) +
+  geom_edge_diagonal(color = "grey", alpha = 0.7)
+
+
+#(3a)
+# Extrach each single possible station from graph_routes
+stations <- graph_routes %>%
+  tidygraph::activate(nodes) %>%
+  pull(title)
+
+# Define starting and ending point
+from_one <- which(stations == "Athens")
+to_one <-  which(stations == "Copenhagen")
+
+# Find shortest weighted path
+shortest_weighted <- graph_routes %>%
+  morph(to_shortest_path, from_one, to_one, weights = dist, mode = "all")
+
+# Re-arrange the order that the edges are drawn in the plot
+# ensuring that the route will be drawn at the top.
+shortest_weighted %>%
+  mutate(selected_node = TRUE) %>%
+  unmorph()
+
+shortest_weighted <- shortest_weighted %>%
+  mutate(selected_node = TRUE) %>%
+  activate(edges) %>%
+  mutate(selected_edge = TRUE) %>%
+  unmorph() 
+
+shortest_weighted <- shortest_weighted %>%
+  activate(nodes) %>%
+  mutate(selected_node = ifelse(is.na(selected_node), 1, 2)) %>%
+  activate(edges) %>%
+  mutate(selected_edge = ifelse(is.na(selected_edge), 1, 2)) %>%
+  arrange(selected_edge)
+
+# Plot the shortest path
+shortest_weighted %>%
+  ggraph(layout = "kk") +
+  geom_edge_diagonal(aes(alpha = selected_edge), color = "black", show.legend = FALSE) +
+  geom_node_text(aes(label = label, color =name, alpha = selected_node), size = 4.5, repel = TRUE, show.legend = FALSE) 
+
+
+#(3b)
+# Define starting and ending point
+from_two <- which(stations == "Athens")
+to_two <-  which(stations == "Copenhagen")
+
+# Find shortest non-weighted path
+shortest_non_weighted <- graph_routes %>%
+  morph(to_shortest_path, from_two, to_two, mode = "all")
+
+# Re-arrange the order that the edges are drawn in the plot
+# ensuring that the route will be drawn at the top.
+shortest_non_weighted %>%
+  mutate(selected_node = TRUE) %>%
+  unmorph()
+
+shortest_non_weighted <- shortest_non_weighted %>%
+  mutate(selected_node = TRUE) %>%
+  activate(edges) %>%
+  mutate(selected_edge = TRUE) %>%
+  unmorph() 
+
+shortest_non_weighted <- shortest_non_weighted %>%
+  activate(nodes) %>%
+  mutate(selected_node = ifelse(is.na(selected_node), 1, 2)) %>%
+  activate(edges) %>%
+  mutate(selected_edge = ifelse(is.na(selected_edge), 1, 2)) %>%
+  arrange(selected_edge)
+
+# Plot the shortest path
+shortest_non_weighted %>%
+  ggraph(layout = "kk") +
+  geom_edge_diagonal(aes(alpha = selected_edge), color = "black", show.legend = FALSE) +
+  geom_node_text(aes(label = label, color =name, alpha = selected_node), size = 4.5, repel = TRUE, show.legend = FALSE) 
+
+
+#(4)
+# Use to_local_neighborhood function as an morpher example.
+morph_test <- tidygraph::as_tbl_graph(final_connections)
+
+morph_testing <- morph_test %>%
+  morph(to_local_neighborhood, nodesloops = FALSE)
+
+# Get row name index as integer because tidygraph requirement
+node_tbl <- data.frame(activate(morph_test, nodes))
+node_idx <- rownames(node_tbl)[node_tbl$name == "Berlin"]
+# Tidygraph needs it as number, not string
+node_idx <- as.integer(node_idx)
+
+# Plot to_local_neighborhood graph example.
+morph_test  %>%
+  tidygraph::convert(to_local_neighborhood,
+                     node = node_idx,
+                     order = 1,
+                     mode = "all") %>%
+  ggraph(layout = "nicely") +
+  geom_edge_link() +
+  geom_node_point(size = 10, fill = "white", shape = 21) +
+  geom_node_text(aes(label = name)) +
+  theme_graph()
