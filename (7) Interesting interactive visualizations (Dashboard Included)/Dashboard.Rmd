@@ -1,0 +1,394 @@
+---
+title: "Dashboard"
+author: "Christakakis Panagiotis"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+```{r global, include=FALSE}
+# Import libraries
+library(splitstackshape)
+library(tidyverse)
+library(tidygraph)
+library(cshapes)
+library(ggrepel)
+library(stringr)
+library(leaflet)
+library(ggplot2)
+library(stringr)
+library(ggraph)
+library(readr)
+library(tmap)
+library(sf)
+library(shiny)
+library(networkD3)
+```
+
+```{r preprocessing_1, include=FALSE}
+# Define path to the .csv file
+path <- "album.csv"
+albums <- read_csv(path)
+```
+
+```{r preprocessing_2, include=FALSE}
+#[Pre-processing]
+# Checking for NA values. Fortunately we have none.
+sum(is.na(albums))
+colSums(is.na(albums))
+```
+
+```{r preprocessing_3, include=FALSE}
+# Check for NAs anyways.
+albums <- albums %>% drop_na()
+
+# Split the album column into year and title. Also convert year from string to numeric.
+albums <- tidyr::separate(albums, album, into = c("year", "title"), sep = "[)]")
+albums$year <- str_replace(albums$year, "[(]", "")
+albums$year <- as.numeric(albums$year)
+
+# Keep an un-edited albums df copy for later use
+albums_raw <- albums
+```
+
+```{r preprocessing_4, include=FALSE}
+# Check the amount of unique artists.
+length(unique(albums$artist))
+```
+
+```{r preprocessing_6, include=FALSE}
+# Split album genres into two new columns with only the first two.
+# If an album has only one genre then, copy that to the second column. 
+albums <- tidyr::separate(albums, genre, 
+                           into = c("primary_genre", "secondary_genre"), ",")
+albums$secondary_genre <- ifelse(is.na(albums$secondary_genre), 
+                                 albums$primary_genre, albums$secondary_genre)
+```
+
+Page 1
+===================================== 
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r inputs-for-1}
+HTML("<h3><strong>(1)</strong></h3>")
+HTML("<h4><strong>Controls for Bar Plot.</strong></h4>")
+```
+
+```{r input-1a}
+sliderInput("width", label = "Control the bar width:",
+              min = 0.2, max = 0.8, value = 0.5, step = 0.1)
+```
+
+```{r input-1b}
+selectInput("fill", label = "Control the color filling:", 
+            choices= c('black','blue','red','green',
+                       'purple','orange','#1cbaeb','grey'), 
+                       selected = '#1cbaeb')
+```
+
+```{r input-1c}
+sliderInput("counter", label = "Control the genre counter:",
+              min = 10, max = 280, value = 30, step = 10)
+```
+
+```{r inputs-for-2}
+HTML("<h3><strong>(2)</strong></h3>")
+HTML("<h4><strong>Controls for Histogram Distribution.</strong></h4>")
+```
+
+```{r input-2}
+sliderInput("bins", label = "Control the amount of bins:",
+              min = 10, max = 60, value = 40, step = 10)
+```
+
+Column {.tabset}
+-----------------------------------------------------------------------
+
+### (1) BarPlot For Total Albums per Genres.
+
+```{r page-1, include=FALSE}
+# New df with albums counter for every genre.
+genres_album <- count(albums_raw, genre)
+colnames(genres_album) <- c('Genres','Albums')
+```
+
+```{r plot-1}
+renderPlot({
+# For simpler plotting reasons, we keep only a subgroup of the df.
+genres_album_plot <- filter(genres_album, Albums > input$counter)
+# Plot
+ggplot(genres_album_plot, aes(Albums, reorder(Genres, Albums))) + 
+  geom_bar(stat = "identity", fill = input$fill, width = input$width) +
+  geom_text(aes(label = Albums), color = "black", 
+            position = position_dodge(width = 2), hjust = -0.05) +
+  labs(x = "Total Albums", y = "Genres") +
+  ggtitle("BarPlot For Total Albums per Genres",
+          subtitle = "Assumption: Each album belongs to all its genres.\nSelect big genre counter for simpler plot.") +
+  theme(plot.title = element_text(face = "bold")) +
+  theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+  theme(plot.caption = element_text(color = "grey68"))  + 
+  theme_minimal()
+})
+```
+
+### (2) Genre Distribution Of All Albums.
+
+```{r page-1b, include=FALSE}
+# New df with albums counter for the first genre.
+primary_genre_album <- count(albums, primary_genre)
+colnames(primary_genre_album) <- c('Genre','Albums')
+
+# Arrange in descending order the df with albums for every genre.
+# Print the top five genres and then filter them into a new df.
+primary_genre_album <- arrange(primary_genre_album, desc(Albums))
+primary_genre_album[1:5,]
+
+# Filtering step
+top_5_genres <- filter(albums, primary_genre == "Pop-Rock" | primary_genre == "Blues" |
+                         primary_genre == "Jazz" | primary_genre == "R&B" |
+                         primary_genre == "International")
+```
+
+```{r plot-1b}
+renderPlot({
+  # Plot
+  ggplot(top_5_genres, aes(x = year)) +
+    geom_histogram(aes(fill = interaction(primary_genre)), bins = input$bins) +
+    ggtitle("Genre Distribution Of All Albums",
+            subtitle = "For Top-5 genres.\nFrom 1938 to 2020.")+
+    labs(y = "Albums", x = "Years") +
+    guides(fill=guide_legend(title="Genre")) +
+    theme(plot.title = element_text(face = "bold")) +
+    theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+    theme(plot.caption = element_text(color = "grey68")) +
+    scale_x_continuous(breaks=seq(1938,2022,10))
+})
+```
+
+Page 2
+=====================================
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+
+### Sankey Network Graph with links between the genre and number of albums for every artist. For simpler plot we set the counter for over 35. Hover mouse to see the total albums.
+
+```{r page-2a, include=FALSE}
+# Count the number of primary genre albums for every artist.
+artist_genre_sankeyNetwork <- count(albums, artist, primary_genre)
+colnames(artist_genre_sankeyNetwork) <- c('artist','primary_genre','count_album_genre','IDsource','IDtarget')
+# Only keep a subset of the df for simpler plotting.
+artist_genre_sankeyNetwork <- filter(artist_genre_sankeyNetwork, 
+                                     count_album_genre > 35)
+
+# Convert artists name and primary genre as nodes for networkD3 and then
+# give them a unique ID. 
+nodes <- data.frame(
+  name=c(as.character(artist_genre_sankeyNetwork$artist), 
+         as.character(artist_genre_sankeyNetwork$primary_genre)) %>% unique()
+)
+artist_genre_sankeyNetwork$IDsource <- match(
+                        artist_genre_sankeyNetwork$artist, nodes$name)-1 
+artist_genre_sankeyNetwork$IDtarget <- match(
+                        artist_genre_sankeyNetwork$primary_genre, nodes$name)-1
+```
+
+```{r plot-2a}
+# Plot graph
+sankeyNetwork(Links = artist_genre_sankeyNetwork, Nodes = nodes,
+                       Source = "IDsource", Target = "IDtarget",
+                       Value = "count_album_genre", NodeID = "name", 
+                       sinksRight=FALSE)
+```
+
+Column {data-width=550}
+-----------------------------------------------------------------------
+
+### Map of referenced countries in album titles.
+
+```{r page-2b, include=FALSE}
+# New df for alterations
+albums_for_map <- albums
+
+# Obtain world data
+if (requireNamespace("sf", quietly = TRUE)) {
+  library(sf)
+  data(world)
+  # or
+  world <- st_read(system.file("shapes/world.gpkg", package="spData"))
+}
+
+# Extract country names from album titles.
+albums_for_map$contains = str_extract(
+  albums_for_map$title, 
+  pattern = regex(paste(world$name_long, collapse = "|"), ignore_case = FALSE)
+)
+
+# Drop NAs and rename columns.
+albums_for_map <- albums_for_map %>% drop_na()
+colnames(albums_for_map) <- 
+  c('primary_genre','secondary_genre','artist','year','title','name_long')
+
+# Merge the two dfs by country name and count unique reference for each country.
+final_map <- merge(world,albums_for_map,by="name_long")
+final_map <- count(final_map, name_long, geometry)
+colnames(final_map) <- c('country','references','geometry')
+
+# Make tmap interactive
+tmap_mode("view")
+```
+
+```{r plot-2b}
+# Plot
+tm_shape(final_map) + 
+  tm_polygons(col = "references", palette = "seq", border.col = "#9c350c") + 
+  tm_text("references", col = "#7568ed")
+```
+
+### Routed Graph of links between the top 5 primary genres with their secondary genre.
+
+```{r page-2c, include=FALSE}
+# Find the links between the top 5 primary genres.
+graph_top_5 <- count(albums, primary_genre, secondary_genre)
+graph_top_5 <- filter(graph_top_5, primary_genre == "Pop-Rock" | 
+                        primary_genre == "Blues" |
+                        primary_genre == "Jazz" | 
+                        primary_genre == "R&B" |
+                        primary_genre == "International")
+```
+
+```{r plot-2c}
+# Plot the graph.
+simpleNetwork(graph_top_5, height="200px", width="200px",        
+                   Source = 1,        
+                   Target = 2,       
+                   linkDistance = 100,
+                   charge = -800,
+                   fontSize = 14,
+                   fontFamily = "serif",
+                   linkColour = "#666",
+                   nodeColour = "#69b3a2",
+                   opacity = 0.7,
+                   zoom = T
+)
+```
+
+Page 3
+===================================== 
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r inputs-for-3}
+HTML("<h3><strong>(1)</strong></h3>")
+HTML("<h4><strong>Controls for Bar Plot.</strong></h4>")
+```
+
+```{r input-3a}
+sliderInput("width_3", label = "Control the bar width:",
+              min = 0.2, max = 0.8, value = 0.5, step = 0.1)
+```
+
+```{r input-3b}
+selectInput("fill_3", label = "Control the color filling:", 
+            choices= c('black','blue','red','green',
+                       'purple','orange','#1cbaeb','grey'), 
+                       selected = '#1cbaeb')
+```
+
+```{r input-3c}
+selectInput("select_artist", label = "Select the artist you want to plot:", 
+            choices= c('Coldplay','Queen','Pink Floyd','AC_DC',
+                       'Gallagher, Rory','Beatles, The','Led Zeppelin',
+                       'Hendrix, Jimi','Deep Purple', 'King, B.B_'), selected = 'Queen')
+```
+
+```{r inputs-for-4}
+HTML("<h3><strong>(2)</strong></h3>")
+HTML("<h4><strong>Controls for Mosaic Plot.</strong></h4>")
+```
+
+```{r input-4a}
+selectInput("color_4", label = "Control the filling color:", 
+            choices= c('black','blue','red','green',
+                       'purple','orange','skyblue2','grey'), 
+                       selected = 'skyblue2')
+```
+
+```{r input-4b}
+selectInput("border_4", label = "Control the border color:", 
+            choices= c('black','blue','red','green',
+                       'purple','orange','chocolate','grey'), 
+                       selected = 'chocolate')
+```
+
+Column {.tabset}
+-----------------------------------------------------------------------
+
+### (1) BarPlot For Total Albums per Genres.
+
+```{r page-3a, include=FALSE}
+artist_albums_per_year <- count(albums, artist, year)
+colnames(artist_albums_per_year) <- c('artist','year','album_counter')
+```
+
+```{r plot-3a}
+renderPlot({
+  # Filter what artist you want to plot.
+  artist_albums_per_year <- filter(artist_albums_per_year, artist == input$select_artist)
+  # Plot
+  ggplot(artist_albums_per_year, aes(year, album_counter)) + 
+    geom_bar(stat = "identity", fill = input$fill_3, width = input$width_3) +
+    labs(x = "Year", y = "Albums") +
+    ggtitle("Number of albums distribution per year.",
+            subtitle = "Plot for selected artist") +
+    theme(plot.title = element_text(face = "bold")) +
+    theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+    theme(plot.caption = element_text(color = "grey68")) +
+    #scale_x_continuous(breaks=seq(1938,2022,10)) + 
+    theme_minimal() +
+    geom_text(aes(label = album_counter), color = "black", 
+              position = position_dodge(width = 1), vjust = 1.1)
+})
+```
+
+### (2) Genres Mosaic Plot.
+
+```{r page-3b, include=FALSE}
+# Creating separate artist df
+# Split genres by comma and keep only the first two.
+artists <- tidyr::separate(albums_raw, genre, 
+                              into = c("primary_genre", "secondary_genre"), ",")
+
+# If an artist only has one genre, add it to the second column
+# Using ifelse
+artists$secondary_genre <- ifelse(is.na(artists$secondary_genre), 
+                                  artists$primary_genre, artists$secondary_genre)
+# Using function coalesce
+#artists$secondary_genre <- artists %>% 
+#                                  mutate(artists$secondary_genre <- coalesce(
+#                                    artists$secondary_genre,artists$primary_genre))
+
+# Keep only unique artist and genres combinations. A total of: 3692
+artists <- select(artists, -year, -title)
+artists <- distinct(artists, artists$artist, .keep_all = TRUE)
+artists <- select(artists, primary_genre, secondary_genre, artist)
+
+# Create a table of the columns
+two_way_table <- table(artists$primary_genre, artists$secondary_genre)
+```
+
+```{r plot-3b}
+renderPlot({
+  # Plot
+  mosaicplot(two_way_table, main = "Genres Mosaic Plot",
+             sub = "Relationships of all genre pairs",
+             xlab = "Primary Genre",
+             ylab = "Secondary Genre",
+             las = 4,
+             color = input$color_4,
+             border = input$border_4
+            )
+})
+```
