@@ -15,7 +15,7 @@
   
   • **(5) Interactive Maps with use of cshapes, leaflet and tmap (Dashboard Included) - Dataset world from cshapes.** Manage and visualize geographic data with world datset from cshapes. This folder contains both R Markdown and Shiny Dashboard. Distance thresholds, buffer from capitals, distance from country's centroid are included. 
   
-  • **(6) Grap plots and shortest paths (Dashboard Included) - Dataset world from cshapes.** Manage and visualize network data again with world datset from cshapes. This folder contains also both R Markdown and Shiny Dashboard. Directed graph of capitals and their distances, shortest path between capitals considering weight distance or total number of nodes are included.
+  • **(6) Graph plots and shortest paths (Dashboard Included) - Dataset world from cshapes.** Manage and visualize network data again with world datset from cshapes. This folder contains also both R Markdown and Shiny Dashboard. Directed graph of capitals and their distances, shortest path between capitals considering weight distance or total number of nodes are included.
 
 This repository was initially created to store my personal R Markdowns but also be available to others trying to build or understand something similar.
 The R codes contained in this repo are made specifically for an EDAV course of my MSc program.
