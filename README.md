@@ -17,7 +17,8 @@
   
   • **(6) Graph plots and shortest paths (Dashboard Included) - Dataset world from cshapes.** Manage and visualize network data again with world datset from cshapes. This folder contains also both R Markdown and Shiny Dashboard. Directed graph of capitals and their distances, shortest path between capitals considering weight distance or total number of nodes are included.
   
-  • **(7) Interesting interactive visualizations (Dashboard Included) - Dataset album.** Managing data about music albums, their genres, titles, year and artists. It's available also on ShinyApps here: christakakis.shinyapps.io/Dashboard-Albums/
+  • **(7) Interesting interactive visualizations (Dashboard Included) - Dataset album.** Managing data about music albums, their genres, titles, year and artists. It's available also as a Dashboard on [ShinyApps](https://christakakis.shinyapps.io/Dashboard-Albums/).
+
 
 This repository was initially created to store my personal R Markdowns but also be available to others trying to build or understand something similar.
 The R codes contained in this repo are made specifically for an EDAV course of my MSc program.
