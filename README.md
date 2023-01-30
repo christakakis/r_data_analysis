@@ -19,6 +19,7 @@
   
   • **(7) Interesting interactive visualizations (Dashboard Included) - Dataset album.** Managing data about music albums, their genres, titles, year and artists. The Dashboard is available for preview on my account on [ShinyApps](https://christakakis.shinyapps.io/Dashboard-Albums/).
 
+  • **(8) Visualizations of NYPD shooting incidents (Dashboard Included) - Various Datasets.** Managing data about NYC shootings and trying to plot something interesting.
 
 This repository was initially created to store my personal R Markdowns but also be available to others trying to build or understand something similar.
 The R codes contained in this repo are made specifically for an EDAV course of my MSc program.
